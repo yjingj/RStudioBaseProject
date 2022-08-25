@@ -1,0 +1,3 @@
+# do not share or commit these credentials where others can access them
+RSCLOUD_CLIENT_ID="DE6E1435080FCA75DEFB1D1C17CD67FBF2D6881E1F9546C0"
+RSCLOUD_CLIENT_SECRET="8YmXObhVZF1zx64+E3LWsttTH4s3Vh1js41yMF2j"
