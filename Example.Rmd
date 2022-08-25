@@ -1,0 +1,30 @@
+---
+title: "Example Rmd File"
+author: "test user"
+date: "date"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+## Install packages
+Skip this step if you are using RStudio.cloud.
+Run this if you have a local instance of RStudio/R on your machine
+```{r, warning = FALSE}
+
+# List of packages for session
+.packages = c("tidyverse", "data.table")
+
+# Install CRAN packages (if not already installed)
+.inst <- .packages %in% installed.packages()
+if(length(.packages[!.inst]) > 0) install.packages(.packages[!.inst])
+
+# Load packages into session 
+lapply(.packages, require, character.only=TRUE)
+
+```
+
+
+## Knit and submit

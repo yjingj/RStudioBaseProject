@@ -1,0 +1,210 @@
+---
+title: "inclass14: Machine Learning"
+author: "group name"
+date: "date"
+output: html_document
+---
+
+## Install packages
+Skip this step if you are using RStudio.cloud
+
+Run this if you have a local instance of RStudio/R on your machine
+```{r}
+#install.packages(c("reshape2", "glmnet", "caret", "ROCR", "plotROC", "pROC"))
+```
+
+## Task 1: Load packages
+- Change your group name and date above. 
+- Use this chunk to load package libraries that you use as you solve the tasks below.
+
+```{r packages, message=FALSE, warning=FALSE, include=TRUE}
+library(tidyverse)
+library(reshape2)
+library(glmnet)
+library(caret)
+
+# ROC plots
+library(ROCR) 
+library(plotROC)
+library(pROC)
+
+library(umap)
+
+# Set global ggplot theme
+theme_set(theme_grey() + theme(text = element_text(size = 24), legend.position="bottom"))
+```
+
+## Task 2: Load RANseq data.
+#### Please use the following code to load the RNAseq data from `./datasets/TCGA-LUAD-mRNA_expression.txt` as `mRNAexp_data`. This data was created from a real RNAseq data set, where gene expression levels were quantified by the mRNA expression Z-scores ralative to normal samples of `26` genes. 
+
+- __Q: Print the dimension and top 6 rows of the RNAseq data object. What is the number of samples? What are the data shown in columns 1, 2, and 3-28?__
+
+```{r}
+mRNAexp_data <- read.table(file = "./datasets/TCGA-LUAD-mRNA.tsv", header = TRUE)
+```
+    
+- __Q: Print the number of samples per sample labels in `mRNAexp_data$Sample_Label` using `table()` function._How many true group labels for these samples?__
+
+
+## Task 3: Clustering
+
+- __Q: Please explain what do the following commands do? What dose each dot represent? What labels are used to color each sample?__
+
+```{r}
+mRNA.umap <- umap(mRNAexp_data[, 3:28])
+ggplot(data.frame(mRNA.umap$layout, labels = factor(mRNAexp_data$Sample_Label) ), 
+       aes(x = X1, y = X2, colour = labels)) + 
+    geom_point() + labs(x = "UMAP X1", y = "UMAP X2") 
+```
+
+- __Q: Please explain what do the following commands do? What columns of the `mRNAexp_data` were used for clustering?__
+```{r}
+clusters <- hclust(dist(mRNAexp_data[, 3:28]), method = "complete")
+plot(clusters, xlab = "Samples")
+```
+
+- __Q: How information dose the results from the following commands show?__
+```{r}
+clusterCut <- cutree(clusters, 2)
+table(clusterCut, mRNAexp_data$Sample_Label)
+```
+
+- __Q: What data are plotted in the following figure? What labels are used to color each sample?__
+```{r}
+ggplot(data.frame(mRNA.umap$layout, ClusterCut = factor(clusterCut) ), 
+       aes(x = X1, y = X2, colour = ClusterCut)) + 
+    geom_point() + labs(x = "UMAP X1", y = "UMAP X2")
+```
+
+
+
+## Task 4. Data preparation.
+- **Q: What dose the function `set.seed()` do? **
+    
+- **Q: What dose the function `createDataPartition()` do and what are the output data in `trainIndex_2class`?**
+
+```{r}
+set.seed(2022)
+trainIndex_2class <- createDataPartition(mRNAexp_data$Sample_Label, p = .7, 
+                                  list = FALSE, 
+                                  times = 1)
+```
+
+
+## Task 5: Model training 
+#### Use logistic regression model with Elastic-Net penalty. Cross validation is used to tune parameters.
+
+- __Q: Please explain what dose the following commands do. __
+    
+```{r}
+## set model training parameters
+fitControl <- trainControl(## 10-fold CV
+                           method = "cv",
+                           number = 10, 
+                           ## Estimate class probabilities
+                           classProbs = TRUE,
+                           ## Evaluate performance using the following function
+                           summaryFunction = twoClassSummary)
+mRNAexp_data$Sample_Label = as.factor(mRNAexp_data$Sample_Label)
+```
+
+#### The following `train()` function is used to train a **classification model** using the training data by the "glmnet" method which fits logistic regression models with Elastic-Net penalty. 
+
+- __Q: What are the response variable and predicting variables for the logistic regression model?__
+
+```{r}
+## Train the classification model by "glmnet" method
+glmnet.fit <- train(Sample_Label ~ ., data = mRNAexp_data[trainIndex_2class, c(2, 3:28)], 
+                 method = "glmnet",
+                 trControl = fitControl,
+                 preProc = c("center", "scale"),
+                 ## set tuning parameter grid
+                 tuneGrid = expand.grid(alpha = seq(0, 1, length.out = 5), 
+                        lambda = c(0.005, 0.001, 0.01, 0.1, 0.5)),
+                 ## Specify which metric to optimize
+                 metric = "ROC")
+# print(glmnet.fit)
+```
+    
+- __Q: Which command was used to setup tuning parameter range?__
+
+- __Q: What metric was used to evaluate model performance?__
+    
+- __Q: What dose `preProc = c("center", "scale")` do?__
+
+- __Q: What dose `plot(glmnet.fit)` show?__    
+
+```{r, warnings = FALSE}
+trellis.par.set(caretTheme())
+plot(glmnet.fit)
+```
+
+- __Q: What dose `glmnet.fit$bestTune` return?__
+
+```{r}
+## Best tuned model
+print(glmnet.fit$bestTune)
+```
+
+- __Q: Please explain what dose the following figure show.__
+
+```{r}
+IMP_glmnet <- varImp(glmnet.fit, scale = FALSE)
+# print(IMP_glmnet)
+plot(IMP_glmnet)
+```
+
+
+## Task 6. Prediction in test data.
+
+- __Q: What samples will be included in the data frame `mRNAexp_data[-trainIndex_2class, ]`?__
+
+- __Q: What samples will be included in the data frame `mRNAexp_data[-trainIndex_2class, ]`?__
+    - Make prediction using your trained model on the test data, calculate the **confusion matrix**. 
+
+```{r}
+# True labels for test samples
+true.class <- mRNAexp_data$Sample_Label[-trainIndex_2class]
+
+### Predict labels using trained models
+pred.class.glmnet <- predict(glmnet.fit, newdata = mRNAexp_data[-trainIndex_2class, ])
+confusionMatrix(pred.class.glmnet, true.class)
+```
+
+- __Q: Please explain what samples are plotted, what are the x-axis, y-axis, and color labels, in the following plot? How is the classfication comparing to the one  given by **Hierarchical clustering**?__
+
+```{r}
+## Predict probabilities using trained models
+pred.prob.glmnet <- predict(glmnet.fit, newdata = mRNAexp_data[-trainIndex_2class, ], 
+                            type = "prob")
+ggplot(data.frame(mRNA.umap$layout[-trainIndex_2class, ], 
+                  Prediction = factor(pred.prob.glmnet[, 2] > 0.5) ), 
+       aes(x = X1, y = X2, colour = Prediction)) + 
+    geom_point() + labs(x = "UMAP X1", y = "UMAP X2")
+
+```
+
+- __Q: Please explain what are the x-axis and y-axis in the following **ROC** plot, and what dose the AUC mean?__
+
+```{r, warning = FALSE}
+# Prepare plot data frame
+roc.plot.dt = data.frame(D = c(true.class, true.class), 
+                         M = c(pred.prob.glmnet[, 2])) 
+
+## Plot ROC curves
+basicplot <- ggplot(roc.plot.dt, 
+                aes(d = D, m = M, colour = "blue")) + 
+  geom_roc(labels = FALSE) + style_roc() 
+
+basicplot + annotate("text", x = .5, y = 0.3, 
+           label = paste("AUC =", 
+                          round(calc_auc(basicplot)$AUC, 3) ), 
+           hjust = 0, size = 9) +
+    guides(colour = FALSE) +
+  theme(text = element_text(size = 24, face = "bold"),
+        axis.text.x = element_text(angle = 24, hjust = 1))
+```
+
+
+
+## Task 7: Knit and submit
